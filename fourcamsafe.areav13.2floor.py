@@ -24,23 +24,25 @@ import rclpy
 from rclpy.node import Node
 from tm_msgs.srv import SendScript, SetEvent
 from tm_msgs.msg import FeedbackState
-from std_msgs.msg import Float32  # <--- 新增這行
 
+# ====== 指派 ======
 from scipy.optimize import linear_sum_assignment
 
 
+# =========================
+# 參數設定（四相機 + 可選配對）
+# =========================
+CALIB_ROOT   = "colcon_ws/src/4camera"
+MODEL_PATH   = "colcon_ws/src/human.pt"
+REID_WEIGHTS = "colcon_ws/src/osnet_x0_25_msmt17.pt"
 
-CALIB_ROOT   = "/home/an/tm_ws/light"
-MODEL_PATH   = "/home/an/tm_ws/light/human.pt"
-REID_WEIGHTS = "/home/an/tm_ws/light/osnet_x0_25_msmt17.pt"
+# ---- 四相機 device index（依你的 /dev/video* 調整）----
+CAM1_IDX = 2
+CAM2_IDX = 4
+CAM3_IDX = 6
+CAM4_IDX = 8
 
-# 四相機 device index
-CAM1_IDX = 0
-CAM2_IDX = 2
-CAM3_IDX = 4
-CAM4_IDX = 6
-
-# 配對切換
+# ---- 要使用哪些配對（在這裡切換）----
 USE_PAIR12 = True
 USE_PAIR34 = False
 
@@ -57,7 +59,7 @@ MAX_PERSONS  = 9
 COLORS3D     = [(0.0, 0.0, 0.0)] * MAX_PERSONS
 
 # =========================
-# 權重
+# 新版配對邏輯參數
 # =========================
 DETECT_BOX_CONF_LOW  = 0.4
 EPI_DIST_THRESH      = 200.0
@@ -68,26 +70,27 @@ W_PROJ               = 0.5
 STICKY_BONUS         = 0.5
 STICKY_IOU_THRESH    = 0.35
 
-TRACK3D_MAX_AGE      = 90
-TRACK3D_DIST_THRESH  = 500.0
-PREDICT_DRAW_MAX_AGE = 10
+# 3D 追蹤參數
+TRACK3D_MAX_AGE      = 30
+TRACK3D_DIST_THRESH  = 1500.0
+PREDICT_DRAW_MAX_AGE = 5
 
 # 高度過濾
-MAX_TOTAL_HEIGHT_MM = 2400.0
-MIN_TOTAL_HEIGHT_MM = 1400.0
-MAX_CENTER_Z_MM     = 900.0
+MAX_TOTAL_HEIGHT_MM = 2300.0
+MIN_TOTAL_HEIGHT_MM = 1000.0
+MAX_CENTER_Z_MM     = 800.0
 
-#兩組pair對齊
+# ---- 兩組 pair 的對齊（如果你有既有對齊偏移需求）----
 APPLY_ALIGN_PAIR34 = True
-ALIGN_34_XY = np.array([-1400.0, 200.0], dtype=np.float64)
+ALIGN_34_XY = np.array([-1050.0, 500.0], dtype=np.float64)
 
-APPLY_ALIGN_PAIR12 = True
-ALIGN_12_XY = np.array([-1000.0, 700.0], dtype=np.float64)
+APPLY_ALIGN_PAIR12 = False
+ALIGN_12_XY = np.array([0.0, 0.0], dtype=np.float64)  # 若 pair12 也要對齊請填入
 
-
+# ---- 同時開雙 pair 時的 3D det 融合（避免同一人雙重 det）----
 FUSE_DET_DIST_MM = 600.0  # 3D center 距離小於此值視為同一人，擇優保留
 
-
+# 人體骨架連線
 SKELETON_EDGES = [
     (0,1),(0,2),(1,3),(2,4),
     (5,6),(5,7),(7,9),(6,8),(8,10),
@@ -95,8 +98,10 @@ SKELETON_EDGES = [
     (5,11),(6,12)
 ]
 
-
-FLOOR_TEXTURE_PATH = "/home/an/tm_ws/light/images.png"
+# =========================
+# PyBullet / 安全區域參數（保留不動）
+# =========================
+FLOOR_TEXTURE_PATH = "colcon_ws/src/images.png"
 PLATFORM_SIZE_M    = 0.20
 PLATFORM_HEIGHT_M  = 0.69
 FLOOR_Z            = -0.69
@@ -118,7 +123,7 @@ BBOX_LINE_WIDTH    = 2
 BIAS_XY_M = (+1, 0.)
 BIAS_MM = np.array([BIAS_XY_M[0]*1000.0, BIAS_XY_M[1]*1000.0, 0.0], dtype=np.float64)
 
-
+# 取代藍盒的自訂平面遮罩（XY 正方形）
 USE_XY_SQUARE_MASK = True
 XY_MASK_CENTER_M   = (0.0, 0.0)
 XY_MASK_HALF_M     = 2.5
@@ -131,7 +136,9 @@ MIN_VALID_BONES_TO_DRAW = 5
 EDGE_MAX_MM = 1100.0
 
 
-
+# =========================
+# 幾何與校正工具
+# =========================
 _id_re = re.compile(r'(\d+)')
 
 def extract_id(path):
@@ -795,7 +802,7 @@ class MultiObjectTracker3D:
 
 
 # =========================
-# PyBullet
+# PyBullet 模擬器（未更動）
 # =========================
 class TMSimulator:
     def __init__(self):
@@ -811,7 +818,7 @@ class TMSimulator:
         self._add_floor_and_platform()
 
         self.tm5_id = p.loadURDF(
-            "/home/an/tm_ws/src/tmr_ros2/tm_description/urdf/tm5-900.urdf",
+            "colcon_ws/src/tmr_ros2/tm_description/urdf/tm5-900.urdf",
             basePosition=[0,0,0], useFixedBase=True
         )
         nj = p.getNumJoints(self.tm5_id)
@@ -1060,13 +1067,15 @@ class PairConfig:
     align_xy: np.ndarray
 
 
-
+# =========================
+# ROS2 節點（四相機、可選 pair）
+# =========================
 class MultiHumanSafetyNode(Node):
     def __init__(self, sim, pair_cfgs, yolo_pack, caps):
         super().__init__('four_cam_human_safety_new_logic')
         self.sim = sim
-        self.pair_cfgs = pair_cfgs   #
-        self.caps = caps             
+        self.pair_cfgs = pair_cfgs   # dict: name -> PairConfig
+        self.caps = caps             # dict: cam_name -> cv2.VideoCapture
 
         (self.model, self.yolo_device_arg, self.torch_device) = yolo_pack
 
@@ -1079,20 +1088,25 @@ class MultiHumanSafetyNode(Node):
             self.get_logger().warning("Waiting for /set_event...")
         self.create_subscription(FeedbackState, '/feedback_states', self.feedback_cb, 10)
 
-        
+        # 運動腳本
         self.tcp_points_fast = [
-            'PTP("CPP",504,-107,354,-179,-45,90,100,100,100,false)',
-
+            'PTP("JPP",-70,45,60,-10,90,0,100,100,100,false)',
+            'PTP("JPP",0,45,60,-10,90,0,100,100,100,false)',
+            'PTP("JPP",-70,45,60,-10,90,0,100,100,100,false)',
+            'PTP("JPP",0,45,60,-10,0,100,100,100,false)'
         ]
         self.tcp_points_slow = [
-            'PTP("CPP",504,-107,354,-179,-45,90,40,100,100,false)'
+            'PTP("JPP",-70,45,60,-10,90,0,40,100,100,false)',
+            'PTP("JPP",0,45,60,-10,90,0,40,100,100,false)',
+            'PTP("JPP",-70,45,60,-10,90,0,40,100,100,false)',
+            'PTP("JPP",0,45,60,-10,90,0,40,100,100,false)'
         ]
         self.tcp_points = self.tcp_points_fast
         self.paused = False
         self.slow_mode = False
         self.lock = threading.Lock()
 
-        
+        # 3D 追蹤器
         self.tracker3d = MultiObjectTracker3D(max_age=TRACK3D_MAX_AGE, dist_thresh=TRACK3D_DIST_THRESH)
 
         self._shutdown = False
@@ -1104,10 +1118,9 @@ class MultiHumanSafetyNode(Node):
                 f"固定減速盒：中心(0,0,0)，半徑={SLOW_BOX_HALF_EXTENT_M} m，"
                 f"x∈[{xm:.2f},{xM:.2f}], y∈[{ym:.2f},{yM:.2f}], z∈[{zm:.2f},{zM:.2f}]"
             )
-        self.speed_ratio_pub = self.create_publisher(Float32, '/safety/speed_ratio', 10)    
 
         threading.Thread(target=self.detect_loop, daemon=True).start()
-        # threading.Thread(target=self.run_loop, daemon=True).start()
+        threading.Thread(target=self.run_loop, daemon=True).start()
 
     def _read_frames(self):
         frames = {}
@@ -1158,28 +1171,28 @@ class MultiHumanSafetyNode(Node):
         dt = 1.0 / TARGET_FPS
 
         while rclpy.ok() and not self._shutdown:
-           
+            # 1) tracker predict
             self.tracker3d.predict(dt)
 
-            
+            # 2) read frames
             frames = self._read_frames()
             if any(frames[k] is None for k in frames):
                 time.sleep(0.001)
                 continue
 
-            
+            # 3) YOLO + ReID (per cam)
             dets_by_cam = self.run_yolo_multi(frames)
             for cn, dets in dets_by_cam.items():
                 compute_reid_for_dets(dets, frames[cn])
 
-            
+            # 4) 對每個啟用 pair 做 stereo + 3D constraints
             all_det3d = []
 
             for pair_name, cfg in self.pair_cfgs.items():
                 dL = dets_by_cam.get(cfg.cam_name_L, [])
                 dR = dets_by_cam.get(cfg.cam_name_R, [])
 
-                
+                # track projections / sticky boxes（針對此 pair）
                 track_projs = {}
                 track_boxes = {}
                 for tr in self.tracker3d.tracks:
@@ -1199,19 +1212,19 @@ class MultiHumanSafetyNode(Node):
                 )
                 all_det3d.extend(det3d_list)
 
-            
+            # 5) 若雙 pair 同開：融合 det
             if len(self.pair_cfgs) >= 2:
                 all_det3d = fuse_det3d_list(all_det3d, dist_mm=FUSE_DET_DIST_MM)
 
-            
+            # 6) tracker update
             active_tracks = self.tracker3d.update(all_det3d)
 
-            
+            # 7) 轉成 skeleton list
             skeletons_to_check = [tr.X_full_mm for tr in active_tracks]
             if len(skeletons_to_check) > MAX_PERSONS:
                 skeletons_to_check = skeletons_to_check[:MAX_PERSONS]
 
-            
+            # 8) render + zone check
             self._render_and_zone_check_simple(skeletons_to_check)
 
         for cap in self.caps.values():
@@ -1305,29 +1318,6 @@ class MultiHumanSafetyNode(Node):
 
         self._apply_zone_logic(any_in_green, any_in_blue)
 
-    # ★ 新增：通用送腳本函式 (移植自舊程式)
-    def _send_script(self, script_str):
-        if not self.send_cli.service_is_ready():
-            self.get_logger().warn("SendScript service not ready")
-            return
-        req = SendScript.Request()
-        req.id = "safety_override" # 隨意取名
-        req.script = script_str
-        self.send_cli.call_async(req)
-
-    # ★ 新增：發布給 switch20_20.py 看的比例
-    def _pub_ratio(self, val: float):
-        msg = Float32()
-        msg.data = float(val)
-        self.speed_ratio_pub.publish(msg)
-
-    # ★ 新增：發布給手臂硬體的強制減速指令
-    def send_speed_override(self, percent: int):
-        pct = max(1, min(100, int(percent)))
-        script = f"SpeedOverride({pct})"
-        self.get_logger().info(f"[SAFETY] SpeedOverride -> {pct}%")
-        self._send_script(script)
-
     def _apply_zone_logic(self, in_green, in_blue):
         self.sim.update_bounding_box_color(color=[0,1,0], line_width=BBOX_LINE_WIDTH)
         now = time.time()
@@ -1341,14 +1331,14 @@ class MultiHumanSafetyNode(Node):
                         req.func = SetEvent.Request.PAUSE
                         req.arg0 = 0; req.arg1 = 0
                         self.event_cli.call_async(req)
-                    self.get_logger().info("急停")
+                    self.get_logger().info("🚷 有人進入綠盒 → 暫停 & 顯示紅疊加")
                     self.paused = True
                     self.sim.show_overlay_from_current(color=[1,0,0], line_width=OVERLAY_LINE_WIDTH)
             else:
                 if self.paused:
                     if self.last_green_exit is None:
                         self.last_green_exit = now
-                        
+                        self.get_logger().info(f"⏳ 綠盒清空，開始冷卻 {RESUME_COOLDOWN_SEC:.1f}s 才恢復")
                     else:
                         elapsed = now - self.last_green_exit
                         if elapsed >= RESUME_COOLDOWN_SEC:
@@ -1357,31 +1347,21 @@ class MultiHumanSafetyNode(Node):
                                 req.func = SetEvent.Request.RESUME
                                 req.arg0 = 0; req.arg1 = 0
                                 self.event_cli.call_async(req)
-                            
+                            self.get_logger().info("✅ 冷卻完成 → 恢復 & 隱藏紅疊加")
                             self.paused = False
                             self.sim.hide_overlay()
                             self.last_green_exit = None
 
-            # ----- 慢速區邏輯 (Blue Zone) -----
             if (in_blue and not self.slow_mode and not self.paused):
                 self.slow_mode = True
                 self.tcp_points = self.tcp_points_slow
                 self.sim.update_slow_box_color(color=SLOW_BOX_ALERT, line_width=SLOW_BOX_LINE_WIDTH)
-                self.get_logger().info("進入減速區")
-                
-                # ★ 新增：觸發減速
-                self._pub_ratio(0.0001)       # 給 python 迴圈看
-                self.send_speed_override(5)   # 給 TM 硬體看
-
+                self.get_logger().info("⚠️ 進入減速區 → 外層盒橘色，PTP=50")
             elif ((not in_blue) and self.slow_mode) or self.paused:
                 self.slow_mode = False
                 self.tcp_points = self.tcp_points_fast
                 self.sim.update_slow_box_color(color=SLOW_BOX_COLOR, line_width=SLOW_BOX_LINE_WIDTH)
-                self.get_logger().info("離開減速區")
-
-                # ★ 新增：恢復全速
-                self._pub_ratio(1.0)          # 給 python 迴圈看
-                self.send_speed_override(100) # 給 TM 硬體看
+                self.get_logger().info("ℹ️ 離開減速區 → 外層盒藍色，PTP=100")
 
     def send_ptp(self, script: str):
         if not self.send_cli.service_is_ready():
@@ -1506,7 +1486,7 @@ def load_pair_config(pair_name, pair_folder, cam_name_L, cam_name_R, T_offset_us
 
     F = _build_stereo_F_and_extrinsics(calib_l, calib_r, pair_folder)
 
-    
+    # 依你原本邏輯：固定 Rz180 乘上 T_offset
     Rz180 = np.array([[-1.0,0.0,0.0],[0.0,-1.0,0.0],[0.0,0.0,1.0]], dtype=np.float64)
     Tz = np.eye(4, dtype=np.float64)
     Tz[:3,:3] = Rz180
@@ -1561,27 +1541,28 @@ def main():
     if (not USE_PAIR12) and (not USE_PAIR34):
         raise SystemExit("[FATAL] USE_PAIR12/USE_PAIR34 至少要開一個")
 
-
+    # === T_offset（請填入你實際的 pair12 / pair34）===
+    # pair34：沿用你提供的範例
     T_offset_12 = np.array(
-[[0.8660, 0.0000, -0.5000, 144.7317],
- [0.5000, 0.0000, 0.8660, 435.5224],
- [0.0000, -1.0000, 0.0000, 571.0000],
- [0.0000, 0.0000, 0.0000, 1.0000]],
+        [[0.5000, 0.0000, 0.8660, 585.5224],
+         [-0.8660, -0.0000, 0.5000, -44.7317],
+         [0.0000, -1.0000, 0.0000, 771.0000],
+         [0.0000, 0.0000, 0.0000, 1.0000]],
         dtype=np.float64
     )
 
     T_offset_34 = np.array(
-[[-0.7660, -0.0000, -0.6428, -322.6486],
- [0.6428, -0.0000, -0.7660, 95.6827],
- [0.0000, -1.0000, 0.0000, 671.0000],
- [0.0000, 0.0000, 0.0000, 1.0000]],
+        [[ 0.5000, -0.0000, -0.8660,  70.9776],
+         [ 0.8660,  0.0000,  0.5000, 239.7317],
+         [ 0.0000, -1.0000,  0.0000, 1071.0000],
+         [ 0.0000,  0.0000,  0.0000,   1.0000]],
         dtype=np.float64
     )
 
-
+    # === 載入 pair configs ===
     pair_cfgs = {}
 
-
+    # cam 名稱只是內部 key；不影響 /dev/video 的 idx
     if USE_PAIR12:
         pair_cfgs["pair12"] = load_pair_config(
             pair_name="pair12",
@@ -1604,7 +1585,7 @@ def main():
             align_xy=ALIGN_34_XY
         )
 
-
+    # === 打開需要的相機（依啟用 pair 決定）===
     need_cams = set()
     if USE_PAIR12:
         need_cams.update(["cam1", "cam2"])
@@ -1622,6 +1603,7 @@ def main():
     for cn in sorted(need_cams):
         caps[cn] = _open_live(cam_name_to_idx[cn], LIVE_SIZE, TARGET_FPS)
 
+    # === 模型初始化 ===
     print(f"Loading YOLO from {MODEL_PATH}")
     model = YOLO(MODEL_PATH)
 
@@ -1643,9 +1625,10 @@ def main():
         except Exception:
             pass
 
-
+    # ReID init（用 torch.device）
     init_reid(torch_device)
 
+    # === 啟動 ===
     sim = TMSimulator()
     rclpy.init()
     node = MultiHumanSafetyNode(
