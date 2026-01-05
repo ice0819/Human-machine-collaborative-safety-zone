@@ -3,6 +3,11 @@
 
 **Human–Robot Collaborative Safety Light Curtain**  
 Multiple cameras are deployed around the workspace and combined with multi-person 3D human pose tracking to capture the spatial distances and motion relationships between each human joint and the robotic arm. The system continuously monitors whether any human skeleton enters the human–robot collaboration zone.
+<img width="1050" height="885" alt="圖片1" src="https://github.com/user-attachments/assets/3ec22577-bc18-42d3-be0f-b6020fcfca42" />
+
+
+https://github.com/user-attachments/assets/09647b08-a651-4d4a-a77b-13289065649b
+
 
 ## Directory Structure and File Descriptions
 
@@ -11,6 +16,7 @@ Multiple cameras are deployed around the workspace and combined with multi-perso
 | **Main Program** | `fourcamsafe.areav13.2floor.py` | **Main human–robot collaborative safety light curtain program** (uses OSNet; higher performance overhead) |
 | **Backup Main Program** | `safe.areav12.4floor.py` | **Main human–robot collaborative safety light curtain program** (lighter performance overhead; more ghost tracks) |
 | **Four-Camera Capture Tool** | `4capture.py` | Captures calibration photos and hand–eye pose photos using 4 cameras |
+| **Two-Camera Capture Tool** | `2capture.py` | Captures calibration photos and hand–eye pose photos using 2 cameras(If you need it) |
 | **Hand–Eye Coordinate Transform** | `tcp_to_base3.py` | Input the robot TCP pose to obtain the transform matrix from chessboard to robot base; paste into the main program |
 | **Human Skeleton Model Weights** | `human.pt` | Used for 2D human skeleton inference; imported via program path |
 | **OSNet Weights** | `osnet_x0_25_msmt17.pt` | Used for multi-person matching; imported via program path |
@@ -109,6 +115,7 @@ URDF folder download link: https://github.com/TechmanRobotInc/tmr_ros2/tree/humb
 
 URDF folder download link: https://github.com/TechmanRobotInc/tmr_ros2/tree/humble/tm_description
 
+<img width="1134" height="1789" alt="圖片2" src="https://github.com/user-attachments/assets/4607eb9e-8a30-431c-8470-d9e87cb74a99" />
 
 
 
@@ -124,6 +131,7 @@ URDF folder download link: https://github.com/TechmanRobotInc/tmr_ros2/tree/humb
 | **主程式** | `fourcamsafe.areav13.2floor.py` | **人機協作安全光柵主程式** (有使用OSnet 效能負擔較重) |
 | **備用主程式** | `safe.areav12.4floor.py` | **人機協作安全光柵主程式** (效能負擔輕 鬼影較多)|
 | **四相機拍攝程式** | `4capture.py` | 用4相機拍攝校正照片與手眼位置照片拍攝 |
+| **雙相機拍攝程式** | `2capture.py` | 用2相機拍攝校正照片與手眼位置照片拍攝(如果你需要) |
 | **手眼座標轉換** | `tcp_to_base3.py` | 將機械手臂姿態輸入即可得到棋盤格到手臂基座的轉換矩陣 輸入至主程式中 |
 | **人體骨架權重檔** | `human.pt` | 用於2D人體骨架推論 程式路徑導入 |
 | **OSnet權重檔** | `osnet_x0_25_msmt17.pt` | 用於多人人體匹配 程式路徑導入 |
