@@ -3,11 +3,12 @@
 
 **Human–Robot Collaborative Safety Light Curtain**  
 Multiple cameras are deployed around the workspace and combined with multi-person 3D human pose tracking to capture the spatial distances and motion relationships between each human joint and the robotic arm. The system continuously monitors whether any human skeleton enters the human–robot collaboration zone.
+<div align="center">
 <img width="525" height="442" alt="圖片1" src="https://github.com/user-attachments/assets/3ec22577-bc18-42d3-be0f-b6020fcfca42" />
-
-
+</div>
+<div align="center">
 https://github.com/user-attachments/assets/09647b08-a651-4d4a-a77b-13289065649b
-
+</div>
 
 ## Directory Structure and File Descriptions
 
@@ -115,7 +116,7 @@ URDF folder download link: https://github.com/TechmanRobotInc/tmr_ros2/tree/humb
 
 URDF folder download link: https://github.com/TechmanRobotInc/tmr_ros2/tree/humble/tm_description
 
-<img width="1134" height="1789" alt="圖片2" src="https://github.com/user-attachments/assets/4607eb9e-8a30-431c-8470-d9e87cb74a99" />
+
 
 
 
