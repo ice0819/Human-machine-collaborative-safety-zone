@@ -25,7 +25,7 @@ If the camera positions or viewing angles change, recalibrate by following the s
 
 ### 1. Collect Calibration Photos
 ```bash
-cd (to the location of the 4capture.p folder)
+cd (to the location of the 4capture.py folder)
 ```
 ```bash
 python3 4capture.py
@@ -137,7 +137,7 @@ URDF folder download link: https://github.com/TechmanRobotInc/tmr_ros2/tree/humb
 
 1. **蒐集校正照片**：
 ```bash
-cd (至4capture.p資料夾位置)
+cd (至4capture.py資料夾位置)
 ```
 ```bash
 python3 4capture.py
