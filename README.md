@@ -1,7 +1,7 @@
 
 # Human-Machine Collaborative Safety Zone
 
-**Human–Robot Collaborative Safety Light Curtain**  
+**Human-Machine Collaborative Safety Zone**  
 Multiple cameras are deployed around the workspace and combined with multi-person 3D human pose tracking to capture the spatial distances and motion relationships between each human joint and the robotic arm. The system continuously monitors whether any human skeleton enters the human–robot collaboration zone.
 <div align="center">
 <img width="525" height="442" alt="圖片1" src="https://github.com/user-attachments/assets/3ec22577-bc18-42d3-be0f-b6020fcfca42" />
