@@ -16,21 +16,21 @@ import rclpy
 from rclpy.node import Node
 from tm_msgs.srv import SendScript, SetEvent
 from tm_msgs.msg import FeedbackState
-from std_msgs.msg import Float32  # <--- 新增這行
+
 
 from scipy.optimize import linear_sum_assignment
 from datetime import datetime
 
 
-CALIB_ROOT = "/home/an/tm_ws/light/"
-MODEL_PATH = "/home/an/tm_ws/light/human.pt"
+CALIB_ROOT = "colcon_ws/src/4camera"
+MODEL_PATH = "colcon_ws/src/human.pt"
 
 
-CAM_LINUX_INDEX = {1: 0, 2: 2, 3: 4, 4: 6}
+CAM_LINUX_INDEX = {1: 2, 2: 4, 3: 6, 4: 8}
 
 # stereo 開關
-USE_PAIR12 = False   
-USE_PAIR34 = True   
+USE_PAIR12 = True   
+USE_PAIR34 = False   
 
 
 LIVE_SIZE       = (1920, 1080)
@@ -62,11 +62,11 @@ TRACK3D_DIST_THRESH   = 500.0
 PREDICT_DRAW_MAX_AGE  = 10      
 
 # YOLO 偵測門檻
-DETECT_BOX_CONF       = 0.35
+DETECT_BOX_CONF       = 0.45
 
 # ——pair34 對齊——
 APPLY_ALIGN_34 = True
-ALIGN_34_XY = np.array([-400.0, 0.0], dtype=np.float64)  # 單位：mm
+ALIGN_34_XY = np.array([-1050.0, 500.0], dtype=np.float64)  # 單位：mm
 
 
 SKELETON_EDGES = [
@@ -77,7 +77,7 @@ SKELETON_EDGES = [
 ]
 
 
-FLOOR_TEXTURE_PATH = "/home/an/tm_ws/light/images.png"
+FLOOR_TEXTURE_PATH = "colcon_ws/src/images.png"
 PLATFORM_SIZE_M    = 0.20
 PLATFORM_HEIGHT_M  = 0.69
 FLOOR_Z            = -0.69
@@ -101,8 +101,8 @@ XY_MASK_CENTER_M   = (0.0, 0.0)
 XY_MASK_HALF_M     = 2.5
 XY_MASK_Z_RANGE_M  = None   
 
-# —— BIAS（m）——
-BIAS_XY_M = (0, +0.75)
+# —— BIAS（mm）——
+BIAS_XY_M = (+1.0, +0.)
 BIAS_MM   = np.array([BIAS_XY_M[0]*1000.0, BIAS_XY_M[1]*1000.0, 0.0], dtype=np.float64)
 
 # 暫停區冷卻時間（秒）
@@ -577,7 +577,7 @@ class TMSimulator:
         self.joint_indices=[1,2,3,4,5,6]
         self._add_floor_and_platform()
 
-        self.tm5_id = p.loadURDF("/home/an/tm_ws/src/tmr_ros2/tm_description/urdf/tm5-900.urdf",
+        self.tm5_id = p.loadURDF("colcon_ws/src/tmr_ros2/tm_description/urdf/tm5-900.urdf",
                                  basePosition=[0,0,0], useFixedBase=True)
         nj = p.getNumJoints(self.tm5_id)
         p.changeVisualShape(self.tm5_id, -1, rgbaColor=[1,1,1,1])
@@ -814,10 +814,16 @@ class MultiHumanSafetyNode(Node):
 
         # PTP 路徑
         self.tcp_points_fast = [
-            'PTP("CPP",504,-107,354,-179,-45,90,100,100,100,false)',
+            'PTP("JPP",-70,45,60,-10,90,0,100,100,100,false)',
+            'PTP("JPP",0,45,60,-10,90,0,100,100,100,false)',
+            'PTP("JPP",-70,45,60,-10,90,0,100,100,100,false)',
+            'PTP("JPP",0,45,60,-10,0,100,100,100,false)'
         ]
         self.tcp_points_slow = [
-            'PTP("CPP",504,-107,354,-179,-45,90,100,100,100,false)',
+            'PTP("JPP",-70,45,60,-10,90,0,40,100,100,false)',
+            'PTP("JPP",0,45,60,-10,90,0,40,100,100,false)',
+            'PTP("JPP",-70,45,60,-10,90,0,40,100,100,false)',
+            'PTP("JPP",0,45,60,-10,90,0,40,100,100,false)'
         ]
         self.tcp_points = self.tcp_points_fast
         self.paused = False
@@ -852,10 +858,9 @@ class MultiHumanSafetyNode(Node):
                 f"固定減速盒：中心(0,0,0)，半徑={SLOW_BOX_HALF_EXTENT_M} m，"
                 f"x∈[{xm:.2f},{xM:.2f}], y∈[{ym:.2f},{yM:.2f}], z∈[{zm:.2f},{zM:.2f}]"
             )
-        # ★ 新增：速度比例 Publisher
-        self.speed_ratio_pub = self.create_publisher(Float32, '/safety/speed_ratio', 10)
+
         
-        # threading.Thread(target=self.run_loop, daemon=True).start()
+        threading.Thread(target=self.run_loop, daemon=True).start()
 
     def _open_live(self, idx, size, fps):
         cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
@@ -922,28 +927,14 @@ class MultiHumanSafetyNode(Node):
 
         return True
 
-    # ★ 新增：通用送腳本函式 (移植自舊程式)
     def _send_script(self, script_str):
+        
         if not self.send_cli.service_is_ready():
             self.get_logger().warn("SendScript service not ready")
             return
         req = SendScript.Request()
-        req.id = "safety_override" # 隨意取名
         req.script = script_str
         self.send_cli.call_async(req)
-
-    # ★ 新增：發布給 switch20_20.py 看的比例
-    def _pub_ratio(self, val: float):
-        msg = Float32()
-        msg.data = float(val)
-        self.speed_ratio_pub.publish(msg)
-
-    # ★ 新增：發布給手臂硬體的強制減速指令
-    def send_speed_override(self, percent: int):
-        pct = max(1, min(100, int(percent)))
-        script = f"SpeedOverride({pct})"
-        self.get_logger().info(f"[SAFETY] SpeedOverride -> {pct}%")
-        self._send_script(script)
 
     def _send_pause(self):
         
@@ -1037,17 +1028,9 @@ class MultiHumanSafetyNode(Node):
             self.sim.last_slow_exit = None 
             if not self.slow_mode:
                 self.slow_mode = True
-                
-                # 若您希望跟來源檔案一樣完全依賴硬體減速，可以註解掉下面這行切換點位的程式
-                # self.tcp_points = self.tcp_points_slow 
-                
+                self.tcp_points = self.tcp_points_slow
                 self.sim.update_slow_box_color(color=SLOW_BOX_ALERT, line_width=SLOW_BOX_LINE_WIDTH)
                 self.get_logger().info("[SAFETY] Enter SLOW mode")
-
-                # ★★★ 請加入這兩行 (觸發減速) ★★★
-                self._pub_ratio(0.0001)       # 通知 python 迴圈 (switch20_20)
-                self.send_speed_override(5)   # 通知手臂硬體降速至 5%
-
         else:
             
             if self.slow_mode:
@@ -1055,20 +1038,13 @@ class MultiHumanSafetyNode(Node):
                 if self.sim.last_slow_exit is None:
                     self.sim.last_slow_exit = now
                 
-                # 過了冷卻時間，恢復速度
+                #
                 if (now - self.sim.last_slow_exit >= RESUME_COOLDOWN_SEC):
                     self.slow_mode = False
-                    
-                    # 若上面註解了，這裡也可以註解掉
-                    # self.tcp_points = self.tcp_points_fast
-                    
+                    self.tcp_points = self.tcp_points_fast
                     self.sim.update_slow_box_color(color=SLOW_BOX_COLOR, line_width=SLOW_BOX_LINE_WIDTH)
                     self.get_logger().info("[SAFETY] Back to FAST mode")
                     self.sim.last_slow_exit = None
-
-                    # ★★★ 請加入這兩行 (恢復全速) ★★★
-                    self._pub_ratio(1.0)          # 通知 python 迴圈恢復
-                    self.send_speed_override(100) # 通知手臂硬體恢復 100%
 
     def feedback_cb(self, msg: FeedbackState):
 
@@ -1348,18 +1324,18 @@ def main():
 
 
     T_offset_12 = np.array(
-[[0.8660, 0.0000, -0.5000, 144.7317],
- [0.5000, 0.0000, 0.8660, 435.5224],
- [0.0000, -1.0000, 0.0000, 571.0000],
- [0.0000, 0.0000, 0.0000, 1.0000]],
+        [[0.5000, 0.0000, 0.8660, 585.5224],
+         [-0.8660, -0.0000, 0.5000, -44.7317],
+         [0.0000, -1.0000, 0.0000, 771.0000],
+         [0.0000, 0.0000, 0.0000, 1.0000]],
         dtype=np.float64
     )
 
     T_offset_34 = np.array(
-[[-0.7660, -0.0000, -0.6428, -322.6486],
- [0.6428, -0.0000, -0.7660, 95.6827],
- [0.0000, -1.0000, 0.0000, 671.0000],
- [0.0000, 0.0000, 0.0000, 1.0000]],
+        [[ 0.5000, -0.0000, -0.8660,  70.9776],
+         [ 0.8660,  0.0000,  0.5000, 239.7317],
+         [ 0.0000, -1.0000,  0.0000, 1071.0000],
+         [ 0.0000,  0.0000,  0.0000,   1.0000]],
         dtype=np.float64
     )
 
