@@ -3,7 +3,7 @@
 
 **Human–Robot Collaborative Safety Light Curtain**  
 Multiple cameras are deployed around the workspace and combined with multi-person 3D human pose tracking to capture the spatial distances and motion relationships between each human joint and the robotic arm. The system continuously monitors whether any human skeleton enters the human–robot collaboration zone.
-<img width="1050" height="885" alt="圖片1" src="https://github.com/user-attachments/assets/3ec22577-bc18-42d3-be0f-b6020fcfca42" />
+<img width="525" height="442" alt="圖片1" src="https://github.com/user-attachments/assets/3ec22577-bc18-42d3-be0f-b6020fcfca42" />
 
 
 https://github.com/user-attachments/assets/09647b08-a651-4d4a-a77b-13289065649b
